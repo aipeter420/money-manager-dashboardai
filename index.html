@@ -292,12 +292,27 @@
   .tx-row{display:flex;align-items:center;gap:12px;padding:12px 2px;border-bottom:1px solid var(--card-line);
     position:relative; z-index:1; background:var(--card,#fff); transition:transform .18s ease;}
   .tx-swipe{position:relative;overflow:hidden;}
-  .tx-swipe .tx-cancel-action{
-    position:absolute; right:0; top:0; bottom:0; width:64px; background:var(--expense);
-    color:#fff; border:none; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center;
+  .tx-swipe-actions{position:absolute; right:0; top:0; bottom:0; width:128px; display:flex;}
+  .tx-swipe-actions button{
+    flex:1; border:none; color:#fff; font-size:12px; font-weight:700;
+    display:flex; align-items:center; justify-content:center;
   }
-  .tx-row.revealed{transform:translateX(-64px);}
+  .tx-edit-action{background:var(--brand,#3B82F6);}
+  .tx-cancel-action{background:var(--expense);}
+  .tx-row.revealed{transform:translateX(-128px);}
   .tx-row:last-child{border-bottom:none;}
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(15,15,25,.5); z-index:100;
+    display:flex; align-items:flex-end; justify-content:center;
+  }
+  .modal-box{
+    background:#fff; border-radius:18px 18px 0 0; padding:18px; width:100%; max-width:480px;
+    box-shadow:0 -6px 24px rgba(0,0,0,.15);
+  }
+  @media (min-width:520px){
+    .modal-overlay{align-items:center;}
+    .modal-box{border-radius:18px;}
+  }
   .tx-row .tx-icon{width:40px;height:40px;border-radius:12px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:17px;background:var(--bg);}
   .tx-row .tx-icon.income{background:#BEF2DC;}
   .tx-row .tx-icon.expense{background:#FAD1D4;}
@@ -321,10 +336,22 @@
 
   .filters{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;}
   .filters input,.filters select{width:auto;flex:1;min-width:110px;margin-bottom:0;}
+  .filters-compact{display:flex;gap:8px;margin-bottom:8px;}
+  .filters-compact input{margin-bottom:0;}
   .icon-btn{
+    position:relative;
     flex:0 0 auto; width:40px; height:40px; border-radius:12px; border:1px solid var(--border);
     background:#fff; font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center;
   }
+  .icon-btn.has-active::after{
+    content:''; position:absolute; top:5px; right:5px; width:7px; height:7px; border-radius:50%; background:var(--expense);
+  }
+  .adv-filters{
+    flex-direction:column; gap:8px; margin-bottom:14px; padding:10px; border-radius:12px;
+    background:var(--bg-2,#f6f6f9); border:1px solid var(--border);
+  }
+  .adv-filters-row{display:flex;gap:8px;}
+  .adv-filters select,.adv-filters input{margin-bottom:0;font-size:13px;padding:8px 10px;}
   .filter-date{ display:flex; flex-direction:column; gap:3px; flex:1; min-width:110px; }
   .filter-date span{ font-size:11px; color:var(--muted); }
   .filter-date input{ margin-bottom:0; }
@@ -577,7 +604,7 @@
     // run here, so this must be your deployed Web App's /exec URL, hardcoded.
     // Apps Script → Deploy → Manage deployments → copy the "Web app" URL.
     // >>> REPLACE THE LINE BELOW WITH YOUR OWN /exec URL <<<
-    API_URL: "https://script.google.com/macros/s/AKfycbwmMpB7DEYB7qZALm1DDN188pZ2FXACe9eYKsdPSrvkNOYbdsAlyZG33ZEx1zOQwYIq/exec"
+    API_URL: "https://script.google.com/macros/s/PASTE_YOUR_DEPLOYMENT_ID_HERE/exec"
   };
 </script>
 
@@ -1148,9 +1175,9 @@ function renderTxRows(items, opts) {
   opts = opts || {};
   const typeIcon = {income:'💰',expense:'💸',transfer:'🔁'};
   return items.map(t => {
-    const canCancel = !opts.compact && t.Status !== 'cancelled';
+    const canAct = !opts.compact && t.Status !== 'cancelled';
     const row = `
-      <div class="tx-row" ${canCancel ? `onclick="toggleTxSwipe(event,this)" ontouchstart="txTouchStart(event,this)" ontouchend="txTouchEnd(event,this)"` : ''}>
+      <div class="tx-row" ${canAct ? `onclick="toggleTxSwipe(event,this)" ontouchstart="txTouchStart(event,this)" ontouchend="txTouchEnd(event,this)"` : ''}>
         <div class="tx-icon ${t.Type==='income'?'income':'expense'}">${typeIcon[t.Type]||'💳'}</div>
         <div class="tx-mid">
           <div class="tx-desc">${escapeHtml(t.Description||t.Merchant||typeLabel(t.Type))}</div>
@@ -1166,11 +1193,14 @@ function renderTxRows(items, opts) {
           <div class="tx-date">${t.TransactionDate}${(!opts.compact && t.TransactionTime)?' · '+t.TransactionTime:''}</div>
         </div>
       </div>`;
-    if (!canCancel) return row;
-    // Status is shown as a badge only — swipe left (or tap) reveals the cancel
-    // action hidden behind the row, instead of a permanent "ยกเลิก" button.
+    if (!canAct) return row;
+    // Status is shown as a badge only — swipe left (or tap) reveals "แก้ไข" / "ยกเลิก"
+    // hidden behind the row, instead of permanent buttons on every item.
     return `<div class="tx-swipe">
-      <button class="tx-cancel-action" onclick="cancelTx('${t.ID}')">ยกเลิก</button>
+      <div class="tx-swipe-actions">
+        <button class="tx-edit-action" onclick="editTxUI('${t.ID}')">แก้ไข</button>
+        <button class="tx-cancel-action" onclick="cancelTx('${t.ID}')">ยกเลิก</button>
+      </div>
       ${row}
     </div>`;
   }).join('');
@@ -1193,6 +1223,54 @@ function txTouchEnd(ev, el) {
   const delta = endX - startX;
   if (delta < -40) el.classList.add('revealed');
   else if (delta > 40) el.classList.remove('revealed');
+}
+
+/** Inline edit form for a transaction's category + description (opened from the swipe action). */
+function editTxUI(txId) {
+  const t = (TX_STATE.itemsById || {})[txId];
+  if (!t) { toast('ไม่พบรายการนี้ ลองโหลดหน้าใหม่', 'error'); return; }
+  const cats = (STATE.categories || []).filter(c => !c.Type || c.Type === t.Type);
+  const catOptions = cats.length
+    ? cats.map(c => `<option value="${escapeHtml(c.CategoryName)}" ${c.CategoryName===t.Category?'selected':''}>${c.Icon||''} ${escapeHtml(c.CategoryName)}</option>`).join('')
+    : `<option value="${escapeHtml(t.Category)}" selected>${escapeHtml(t.Category)}</option>`;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'editTxOverlay';
+  overlay.innerHTML = `
+    <div class="modal-box">
+      <h3 style="margin:0 0 12px;font-size:15px;">แก้ไขรายการ</h3>
+      <label class="filter-date" style="margin-bottom:10px;"><span>หมวดหมู่</span>
+        <select id="editTxCategory">${catOptions}</select>
+      </label>
+      <label class="filter-date" style="margin-bottom:14px;"><span>รายละเอียด</span>
+        <input id="editTxDescription" value="${escapeHtml(t.Description || '')}" placeholder="รายละเอียดรายการ">
+      </label>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="secondary" onclick="closeEditTxUI()">ยกเลิก</button>
+        <button onclick="submitEditTx('${txId}')">บันทึก</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+function closeEditTxUI() {
+  const el = document.getElementById('editTxOverlay');
+  if (el) el.remove();
+}
+
+async function submitEditTx(txId) {
+  const category = document.getElementById('editTxCategory').value;
+  const description = document.getElementById('editTxDescription').value.trim();
+  try {
+    const resp = await apiPost('edit-transaction', { id: txId, changes: { Category: category, Description: description } });
+    if (!resp.success) throw new Error(resp.error);
+    toast('บันทึกการแก้ไขแล้ว', 'success');
+    closeEditTxUI();
+    loadTransactions();
+  } catch (e) {
+    toast('แก้ไขไม่สำเร็จ: ' + (e && e.message ? e.message : e), 'error');
+  }
 }
 
 function drawPieChart(canvasId, dataObj, baseColor) {
@@ -1221,24 +1299,36 @@ async function renderTransactions() {
   const el = document.getElementById('tab-transactions');
   el.innerHTML = `
     <div class="card">
-      <div class="filters">
-        <input id="fSearch" placeholder="🔍 ค้นหา..." style="flex:2;min-width:140px;" onkeyup="if(event.key==='Enter')applyTxFilters()">
+      <div class="filters-compact">
+        <input id="fSearch" placeholder="🔍 ค้นหา..." style="flex:1;" onkeyup="if(event.key==='Enter')applyTxFilters()">
         <button class="icon-btn" onclick="exportCsv()" title="Export CSV" aria-label="Export CSV">⬇️</button>
-        <select id="fType" onchange="applyTxFilters()">
-          <option value="">ทุกประเภท</option><option value="expense">รายจ่าย</option>
-          <option value="income">รายรับ</option><option value="transfer">โอนเงิน</option>
-        </select>
-        <select id="fStatus" onchange="applyTxFilters()">
-          <option value="">ทุกสถานะ</option><option value="confirmed">ยืนยันแล้ว</option>
-          <option value="pending">รอยืนยัน</option><option value="cancelled">ยกเลิก</option>
-        </select>
-        <label class="filter-date"><span>จากวันที่</span><input id="fFrom" type="date" onchange="applyTxFilters()"></label>
-        <label class="filter-date"><span>ถึงวันที่</span><input id="fTo" type="date" onchange="applyTxFilters()"></label>
+        <button class="icon-btn" onclick="toggleAdvancedFilters()" id="filterToggleBtn" title="ตัวกรองเพิ่มเติม" aria-label="ตัวกรองเพิ่มเติม">⚙️</button>
+      </div>
+      <div id="advancedFilters" class="adv-filters" style="display:none;">
+        <div class="adv-filters-row">
+          <select id="fType" onchange="applyTxFilters()">
+            <option value="">ทุกประเภท</option><option value="expense">รายจ่าย</option>
+            <option value="income">รายรับ</option><option value="transfer">โอนเงิน</option>
+          </select>
+          <select id="fStatus" onchange="applyTxFilters()">
+            <option value="">ทุกสถานะ</option><option value="confirmed">ยืนยันแล้ว</option>
+            <option value="pending">รอยืนยัน</option><option value="cancelled">ยกเลิก</option>
+          </select>
+        </div>
+        <div class="adv-filters-row">
+          <label class="filter-date"><span>จากวันที่</span><input id="fFrom" type="date" onchange="applyTxFilters()"></label>
+          <label class="filter-date"><span>ถึงวันที่</span><input id="fTo" type="date" onchange="applyTxFilters()"></label>
+        </div>
       </div>
       <div id="txTableWrap">${loadingHtml('กำลังโหลดรายการ')}</div>
     </div>
   `;
   loadTransactions();
+}
+
+function toggleAdvancedFilters() {
+  const panel = document.getElementById('advancedFilters');
+  panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
 }
 
 function applyTxFilters() {
@@ -1249,6 +1339,8 @@ function applyTxFilters() {
     dateFrom: document.getElementById('fFrom').value,
     dateTo: document.getElementById('fTo').value
   };
+  const hasAdvanced = TX_STATE.filters.type || TX_STATE.filters.status || TX_STATE.filters.dateFrom || TX_STATE.filters.dateTo;
+  document.getElementById('filterToggleBtn').classList.toggle('has-active', !!hasAdvanced);
   TX_STATE.page = 1;
   loadTransactions();
 }
@@ -1261,6 +1353,8 @@ async function loadTransactions() {
     const resp = await apiGet('transactions', params);
     if (!resp.success) throw new Error(resp.error);
     const items = resp.data.items;
+    TX_STATE.itemsById = {};
+    items.forEach(t => { TX_STATE.itemsById[t.ID] = t; });
     if (items.length === 0) { wrap.innerHTML = emptyState(); return; }
     let rows = renderTxRows(items);
     const totalPages = Math.max(1, Math.ceil(resp.data.total / resp.data.pageSize));
